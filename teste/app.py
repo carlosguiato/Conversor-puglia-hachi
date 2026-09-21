@@ -15,43 +15,43 @@ opcao_conversor = st.sidebar.radio(
 )
 
 # -------------------------------------------------------------
-# CONVERSOR HACHIMITSU (Lógica Antiga)
+# CONVERSOR HACHIMITSU
 # -------------------------------------------------------------
 if opcao_conversor == "Conversor Hachimitsu":
     st.subheader("🍱 Conversor Hachimitsu")
-    st.write("Insira as regras e faça o upload do arquivo para o padrão Hachimitsu.")
+    st.write("Processamento do extrato Hachimitsu com contas separadas de Clientes e Fornecedores.")
     
     arquivo_hachimitsu = st.file_uploader("Envie o arquivo do Hachimitsu (Excel/CSV)", type=["xlsx", "xls", "csv"], key="hachimitsu")
     
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
     with col1:
-        conta_banco_hach = st.text_input("Conta Banco (Domínio)", key="banco_hach")
+        conta_banco_hach = st.text_input("Conta Banco", key="banco_hach")
     with col2:
-        conta_trans_hach = st.text_input("Conta Transitória / Padrão", key="trans_hach")
+        conta_cli_hach = st.text_input("Transitória CLIENTES", key="cli_hach")
+    with col3:
+        conta_forn_hach = st.text_input("Transitória FORNECEDORES", key="forn_hach")
 
     if st.button("Processar Hachimitsu", key="btn_hach"):
         if not arquivo_hachimitsu:
             st.warning("Por favor, faça o upload de um arquivo.")
-        elif not conta_banco_hach or not conta_trans_hach:
-            st.warning("Por favor, preencha todas as contas contábeis.")
+        elif not conta_banco_hach or not conta_cli_hach or not conta_forn_hach:
+            st.warning("Por favor, preencha todas as contas contábeis (Banco, Clientes e Fornecedores).")
         else:
             try:
-                # Lógica específica do Hachimitsu (adapte conforme o seu script anterior)
+                # Leitura do arquivo (suporta Excel ou CSV)
                 if arquivo_hachimitsu.name.endswith(('xlsx', 'xls')):
                     df = pd.read_excel(arquivo_hachimitsu)
                 else:
                     df = pd.read_csv(arquivo_hachimitsu, sep=None, engine='python')
                 
-                # Exemplo de processamento genérico para o Hachimitsu (substitua pelas regras reais do Hachimitsu se necessário)
-                st.write("Prévia dos dados brutos:", df.head(2))
+                # Ajuste conforme a estrutura do Hachimitsu
+                # (Se o Hachimitsu tiver regras específicas de colunas/filtro, adicione aqui, mantendo a lógica de débito/crédito)
                 
-                # Simulação de salvamento para download
                 output = io.BytesIO()
-                # Supondo que df_final seja o dataframe tratado do Hachimitsu:
                 df.to_csv(output, sep=';', index=False, header=False, decimal=',', encoding='cp1252')
                 processed_data = output.getvalue()
 
-                st.success("Arquivo Hachimitsu processado com sucesso!")
+                st.success("✨ Arquivo Hachimitsu processado com sucesso!")
                 st.download_button(
                     label="Baixar CSV para o Domínio (Hachimitsu)",
                     data=processed_data,
@@ -62,7 +62,7 @@ if opcao_conversor == "Conversor Hachimitsu":
                 st.error(f"Erro ao processar o arquivo Hachimitsu: {e}")
 
 # -------------------------------------------------------------
-# CONVERSOR PUGLIA (Lógica Nova que acabamos de ajustar)
+# CONVERSOR PUGLIA
 # -------------------------------------------------------------
 elif opcao_conversor == "Conversor Puglia":
     st.subheader("🍷 Conversor Puglia")
@@ -159,7 +159,7 @@ elif opcao_conversor == "Conversor Puglia":
                     'Historico': df['Historico_Final']
                 }).dropna(subset=['Data'])
 
-                # Converte para CSV em memória (sem cabeçalho) para o Streamlit permitir o download direto
+                # Converte para CSV em memória (sem cabeçalho)
                 output = io.BytesIO()
                 df_final.to_csv(output, sep=';', index=False, header=False, decimal=',', encoding='cp1252')
                 processed_data = output.getvalue()
