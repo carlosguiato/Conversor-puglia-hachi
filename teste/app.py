@@ -1,0 +1,176 @@
+import io
+import pandas as pd
+import streamlit as st
+
+st.set_page_config(page_title="Conversores Contábeis", page_icon="📊", layout="centered")
+
+st.title("📊 Sistema de Conversão de Extratos para o Domínio")
+st.write("Selecione o conversor desejado na barra lateral, faça o upload do arquivo e informe as contas contábeis.")
+
+# Barra lateral para escolha do conversor
+st.sidebar.header("Menu de Navegação")
+opcao_conversor = st.sidebar.radio(
+    "Escolha o Conversor:",
+    ("Conversor Hachimitsu", "Conversor Puglia")
+)
+
+# -------------------------------------------------------------
+# CONVERSOR HACHIMITSU (Lógica Antiga)
+# -------------------------------------------------------------
+if opcao_conversor == "Conversor Hachimitsu":
+    st.subheader("🍱 Conversor Hachimitsu")
+    st.write("Insira as regras e faça o upload do arquivo para o padrão Hachimitsu.")
+    
+    arquivo_hachimitsu = st.file_uploader("Envie o arquivo do Hachimitsu (Excel/CSV)", type=["xlsx", "xls", "csv"], key="hachimitsu")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        conta_banco_hach = st.text_input("Conta Banco (Domínio)", key="banco_hach")
+    with col2:
+        conta_trans_hach = st.text_input("Conta Transitória / Padrão", key="trans_hach")
+
+    if st.button("Processar Hachimitsu", key="btn_hach"):
+        if not arquivo_hachimitsu:
+            st.warning("Por favor, faça o upload de um arquivo.")
+        elif not conta_banco_hach or not conta_trans_hach:
+            st.warning("Por favor, preencha todas as contas contábeis.")
+        else:
+            try:
+                # Lógica específica do Hachimitsu (adapte conforme o seu script anterior)
+                if arquivo_hachimitsu.name.endswith(('xlsx', 'xls')):
+                    df = pd.read_excel(arquivo_hachimitsu)
+                else:
+                    df = pd.read_csv(arquivo_hachimitsu, sep=None, engine='python')
+                
+                # Exemplo de processamento genérico para o Hachimitsu (substitua pelas regras reais do Hachimitsu se necessário)
+                st.write("Prévia dos dados brutos:", df.head(2))
+                
+                # Simulação de salvamento para download
+                output = io.BytesIO()
+                # Supondo que df_final seja o dataframe tratado do Hachimitsu:
+                df.to_csv(output, sep=';', index=False, header=False, decimal=',', encoding='cp1252')
+                processed_data = output.getvalue()
+
+                st.success("Arquivo Hachimitsu processado com sucesso!")
+                st.download_button(
+                    label="Baixar CSV para o Domínio (Hachimitsu)",
+                    data=processed_data,
+                    file_name="extrato_hachimitsu_dominio.csv",
+                    mime="text/csv"
+                )
+            except Exception as e:
+                st.error(f"Erro ao processar o arquivo Hachimitsu: {e}")
+
+# -------------------------------------------------------------
+# CONVERSOR PUGLIA (Lógica Nova que acabamos de ajustar)
+# -------------------------------------------------------------
+elif opcao_conversor == "Conversor Puglia":
+    st.subheader("🍷 Conversor Puglia")
+    st.write("Processamento do relatório com exclusão de colunas B, C e Saldo, filtro 'Cons. == S' e histórico personalizado.")
+    
+    arquivo_puglia = st.file_uploader("Envie o arquivo do Puglia (Excel)", type=["xlsx", "xls"], key="puglia")
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        conta_banco_pug = st.text_input("Conta Banco", key="banco_pug")
+    with col2:
+        conta_cli_pug = st.text_input("Transitória CLIENTES", key="cli_pug")
+    with col3:
+        conta_forn_pug = st.text_input("Transitória FORNECEDORES", key="forn_pug")
+
+    if st.button("Processar Puglia", key="btn_pug"):
+        if not arquivo_puglia:
+            st.warning("Por favor, faça o upload de um arquivo Excel.")
+        elif not conta_banco_pug or not conta_cli_pug or not conta_forn_pug:
+            st.warning("Por favor, preencha todas as contas contábeis (Banco, Clientes e Fornecedores).")
+        else:
+            try:
+                # 1. Carrega o arquivo Excel
+                df = pd.read_excel(arquivo_puglia)
+                
+                # 2. Pula a primeira linha de dados (ignora o "Saldo anterior")
+                df = df.iloc[1:].reset_index(drop=True)
+                
+                # 3. Apaga as colunas B e C originais (índices 1 e 2)
+                colunas_para_remover = [df.columns[1], df.columns[2]]
+                df = df.drop(columns=colunas_para_remover)
+                
+                # 4. Apaga a coluna de Saldo
+                colunas_saldo = [col for col in df.columns if 'saldo' in col.lower()]
+                if colunas_saldo:
+                    df = df.drop(columns=colunas_saldo)
+                
+                # 5. Filtra a coluna 'Cons.' mantendo apenas os valores 'S' (ignora 'N')
+                col_cons = [c for c in df.columns if 'cons' in c.lower() and c.lower() != 'data consol.']
+                if col_cons:
+                    nome_col_cons = col_cons[0]
+                    df = df[df[nome_col_cons].astype(str).str.strip().str.upper() == 'S']
+
+                # Identifica as colunas restantes com base na posição atualizada
+                col_data = df.columns[0]
+                col_tipo = df.columns[1]
+                col_desc = df.columns[2]
+                col_nota = df.columns[3]
+                col_nome = df.columns[4]
+                col_cd   = df.columns[5]
+                col_val  = df.columns[7] if len(df.columns) > 7 else df.columns[-1]
+
+                # 6. Monta o Histórico na ordem exata: Descrição, NºNota, Nome e Tipo
+                def criar_historico(row):
+                    partes = []
+                    desc = str(row[col_desc]).strip() if pd.notna(row[col_desc]) else ""
+                    if desc and desc.lower() != 'nan': partes.append(desc)
+                    
+                    nota = str(row[col_nota]).strip() if pd.notna(row[col_nota]) else ""
+                    if nota and nota.lower() != 'nan': partes.append(f"Nota: {nota}")
+                    
+                    nome = str(row[col_nome]).strip() if pd.notna(row[col_nome]) else ""
+                    if nome and nome.lower() != 'nan': partes.append(nome)
+                    
+                    tipo = str(row[col_tipo]).strip() if pd.notna(row[col_tipo]) else ""
+                    if tipo and tipo.lower() != 'nan': partes.append(tipo)
+                    
+                    return " - ".join(partes)
+
+                df['Historico_Final'] = df.apply(criar_historico, axis=1)
+
+                # 7. Define as contas de Débito e Crédito baseadas na coluna CD
+                contas_debito = []
+                contas_credito = []
+
+                for _, row in df.iterrows():
+                    indicador_cd = str(row[col_cd]).strip().upper()
+                    if indicador_cd == 'D':
+                        contas_debito.append(conta_forn_pug)
+                        contas_credito.append(conta_banco_pug)
+                    else:
+                        contas_debito.append(conta_banco_pug)
+                        contas_credito.append(conta_cli_pug)
+
+                df['Conta Debito'] = contas_debito
+                df['Conta Credito'] = contas_credito
+
+                # 8. Formata o DataFrame final no layout exato
+                df_final = pd.DataFrame({
+                    'Data': pd.to_datetime(df[col_data], dayfirst=True, errors='coerce').dt.strftime('%d/%m/%Y'),
+                    'Conta Debito': df['Conta Debito'],
+                    'Conta Credito': df['Conta Credito'],
+                    'Valor': pd.to_numeric(df[col_val], errors='coerce').abs(),
+                    'Historico': df['Historico_Final']
+                }).dropna(subset=['Data'])
+
+                # Converte para CSV em memória (sem cabeçalho) para o Streamlit permitir o download direto
+                output = io.BytesIO()
+                df_final.to_csv(output, sep=';', index=False, header=False, decimal=',', encoding='cp1252')
+                processed_data = output.getvalue()
+
+                st.success(f"✨ Processo concluído! {len(df_final)} lançamentos gerados com sucesso.")
+                
+                st.download_button(
+                    label="Baixar CSV para o Domínio (Puglia)",
+                    data=processed_data,
+                    file_name="extrato_puglia_dominio.csv",
+                    mime="text/csv"
+                )
+            except Exception as e:
+                st.error(f"Ocorreu um erro ao processar o arquivo Puglia: {e}")
