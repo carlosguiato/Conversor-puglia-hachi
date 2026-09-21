@@ -19,7 +19,7 @@ opcao_conversor = st.sidebar.radio(
 # -------------------------------------------------------------
 if opcao_conversor == "Conversor Hachimitsu":
     st.subheader("🍱 Conversor Hachimitsu")
-    st.write("Processamento do extrato Hachimitsu com contas separadas de Clientes e Fornecedores.")
+    st.write("Processamento do extrato Hachimitsu com seleção específica de Banco, Clientes e Fornecedores.")
     
     arquivo_hachimitsu = st.file_uploader("Envie o arquivo do Hachimitsu (Excel/CSV)", type=["xlsx", "xls", "csv"], key="hachimitsu")
     
@@ -43,9 +43,6 @@ if opcao_conversor == "Conversor Hachimitsu":
                     df = pd.read_excel(arquivo_hachimitsu)
                 else:
                     df = pd.read_csv(arquivo_hachimitsu, sep=None, engine='python')
-                
-                # Ajuste conforme a estrutura do Hachimitsu
-                # (Se o Hachimitsu tiver regras específicas de colunas/filtro, adicione aqui, mantendo a lógica de débito/crédito)
                 
                 output = io.BytesIO()
                 df.to_csv(output, sep=';', index=False, header=False, decimal=',', encoding='cp1252')
