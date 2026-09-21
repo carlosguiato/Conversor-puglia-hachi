@@ -33,8 +33,8 @@ if opcao_conversor == "Conversor Hachimitsu":
             # Tenta localizar automaticamente a coluna que contém os nomes dos bancos
             colunas_possiveis = [c for c in df.columns if 'banco' in c.lower() or 'conta' in c.lower() or 'instituicao' in c.lower()]
             
-            mapeamento_bancos = {}
             col_banco = None
+            mapeamento_bancos = {}
             
             if colunas_possiveis:
                 col_banco = colunas_possiveis[0]
@@ -62,13 +62,58 @@ if opcao_conversor == "Conversor Hachimitsu":
                 if not conta_cli_hach or not conta_forn_hach:
                     st.warning("Por favor, preencha as contas transitórias de Clientes e Fornecedores.")
                 else:
-                    # Lógica para tratar o Hachimitsu:
-                    # 1. Identifica colunas básicas (Data, Tipo/Valor/Histórico conforme a estrutura original do Hachimitsu)
-                    # 2. Substitui o banco pela conta contábil mapeada e formata no layout padrão do Domínio.
+                    # Identifica colunas base (ajuste conforme a estrutura padrão do Hachimitsu)
+                    col_data = df.columns[0]
+                    col_cd = [c for c in df.columns if 'cd' in c.lower() or 'tipo' in c.lower() or 'd/c' in c.lower()]
+                    col_cd = col_cd[0] if col_cd else df.columns[5]
                     
-                    # Exemplo de salvamento limpo (ajuste as colunas reais do Hachimitsu se necessário):
+                    col_val = [c for c in df.columns if 'valor' in c.lower()]
+                    col_val = col_val[0] if col_val else df.columns[-1]
+
+                    # Mapeia as contas de Débito e Crédito baseadas no banco da linha e na coluna D/C
+                    contas_debito = []
+                    contas_credito = []
+
+                    for _, row in df.iterrows():
+                        nome_banco_linha = str(row[col_banco]).strip() if col_banco and pd.notna(row[col_banco]) else ""
+                        conta_banco_escolhida = mapeamento_bancos.get(nome_banco_linha, "")
+                        
+                        indicador_cd = str(row[col_cd]).strip().upper()
+                        
+                        if 'D' in indicador_cd:
+                            contas_debito.append(conta_forn_hach)
+                            contas_credito.append(conta_banco_escolhida)
+                        else:
+                            contas_debito.append(conta_banco_escolhida)
+                            contas_credito.append(conta_cli_hach)
+
+                    df['Conta Debito'] = contas_debito
+                    df['Conta Credito'] = contas_credito
+
+                    # Monta o histórico ignorando a coluna de banco para não sujar o texto
+                    colunas_historico = [c for c in df.columns if c not in [col_data, col_banco, col_cd, col_val, 'Conta Debito', 'Conta Credito']]
+                    
+                    def criar_historico(row):
+                        partes = []
+                        for c in colunas_historico:
+                            val = str(row[c]).strip() if pd.notna(row[c]) else ""
+                            if val and val.lower() != 'nan':
+                                partes.append(val)
+                        return " - ".join(partes)
+
+                    df['Historico_Final'] = df.apply(criar_historico, axis=1)
+
+                    # DataFrame final limpo no padrão do Domínio
+                    df_final = pd.DataFrame({
+                        'Data': pd.to_datetime(df[col_data], dayfirst=True, errors='coerce').dt.strftime('%d/%m/%Y'),
+                        'Conta Debito': df['Conta Debito'],
+                        'Conta Credito': df['Conta Credito'],
+                        'Valor': pd.to_numeric(df[col_val], errors='coerce').abs(),
+                        'Historico': df['Historico_Final']
+                    }).dropna(subset=['Data'])
+
                     output = io.BytesIO()
-                    df.to_csv(output, sep=';', index=False, header=False, decimal=',', encoding='cp1252')
+                    df_final.to_csv(output, sep=';', index=False, header=False, decimal=',', encoding='cp1252')
                     processed_data = output.getvalue()
 
                     st.success("✨ Arquivo Hachimitsu processado com sucesso!")
@@ -170,7 +215,7 @@ elif opcao_conversor == "Conversor Puglia":
                 df['Conta Debito'] = contas_debito
                 df['Conta Credito'] = contas_credito
 
-                # 8. Formata o DataFrame final no layout exato (sem o nome do banco no meio)
+                # 8. Formata o DataFrame final no layout exato
                 df_final = pd.DataFrame({
                     'Data': pd.to_datetime(df[col_data], dayfirst=True, errors='coerce').dt.strftime('%d/%m/%Y'),
                     'Conta Debito': df['Conta Debito'],
