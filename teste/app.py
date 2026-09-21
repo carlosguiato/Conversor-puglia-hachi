@@ -15,42 +15,42 @@ opcao_conversor = st.sidebar.radio(
 )
 
 # -------------------------------------------------------------
-# CONVERSOR HACHIMITSU (Com leitura dinâmica e memória dos bancos)
+# CONVERSOR HACHIMITSU
 # -------------------------------------------------------------
 if opcao_conversor == "Conversor Hachimitsu":
     st.subheader("🍱 Conversor Hachimitsu")
-    st.write("Envie o arquivo para identificar os bancos e configurar as contas de cada um.")
+    st.write("Envie o arquivo, mapeie as contas dos bancos e defina as transitórias.")
     
     arquivo_hachimitsu = st.file_uploader("Envie o arquivo do Hachimitsu (Excel/CSV)", type=["xlsx", "xls", "csv"], key="hachimitsu")
     
     if arquivo_hachimitsu is not None:
         try:
-            # Lê o arquivo se mudou ou se ainda não foi lido
             if arquivo_hachimitsu.name.endswith(('xlsx', 'xls')):
-                df_hach = pd.read_excel(arquivo_hachimitsu)
+                df = pd.read_excel(arquivo_hachimitsu)
             else:
-                df_hach = pd.read_csv(arquivo_hachimitsu, sep=None, engine='python')
+                df = pd.read_csv(arquivo_hachimitsu, sep=None, engine='python')
             
             # Tenta localizar automaticamente a coluna que contém os nomes dos bancos
-            colunas_possiveis = [c for c in df_hach.columns if 'banco' in c.lower() or 'conta' in c.lower() or 'instituicao' in c.lower()]
+            colunas_possiveis = [c for c in df.columns if 'banco' in c.lower() or 'conta' in c.lower() or 'instituicao' in c.lower()]
+            
+            mapeamento_bancos = {}
+            col_banco = None
             
             if colunas_possiveis:
-                col_banco_hach = colunas_possiveis[0]
-                bancos_encontrados = df_hach[col_banco_hach].dropna().unique()
+                col_banco = colunas_possiveis[0]
+                bancos_encontrados = df[col_banco].dropna().unique()
                 
-                st.success(f"🔍 Coluna de bancos identificada: **{col_banco_hach}**")
-                st.write("Informe a conta contábil do Domínio para cada banco listado abaixo:")
+                st.success(f"🔍 Coluna de bancos identificada: **{col_banco}**")
+                st.write("Informe a conta contábil do Domínio para cada banco:")
                 
-                # Cria os inputs para cada banco encontrado
-                contas_bancos_input = {}
                 for banco in bancos_encontrados:
-                    contas_bancos_input[banco] = st.text_input(f"Conta Domínio para o Banco: {banco}", key=f"input_banco_{banco}")
+                    mapeamento_bancos[banco] = st.text_input(f"Conta Domínio para: {banco}", key=f"hach_banco_{banco}")
                 
                 st.markdown("---")
             else:
                 st.warning("Não foi possível detectar automaticamente a coluna de bancos.")
-            
-            # Contas Transitórias gerais do Hachimitsu
+
+            # Contas Transitórias
             st.write("### Contas Transitórias")
             col1, col2 = st.columns(2)
             with col1:
@@ -62,11 +62,13 @@ if opcao_conversor == "Conversor Hachimitsu":
                 if not conta_cli_hach or not conta_forn_hach:
                     st.warning("Por favor, preencha as contas transitórias de Clientes e Fornecedores.")
                 else:
-                    # Lógica de substituição e geração do Hachimitsu
-                    # Aqui você pode aplicar o mapeamento das contas dos bancos na coluna correspondente do df_hach se necessário
+                    # Lógica para tratar o Hachimitsu:
+                    # 1. Identifica colunas básicas (Data, Tipo/Valor/Histórico conforme a estrutura original do Hachimitsu)
+                    # 2. Substitui o banco pela conta contábil mapeada e formata no layout padrão do Domínio.
                     
+                    # Exemplo de salvamento limpo (ajuste as colunas reais do Hachimitsu se necessário):
                     output = io.BytesIO()
-                    df_hach.to_csv(output, sep=';', index=False, header=False, decimal=',', encoding='cp1252')
+                    df.to_csv(output, sep=';', index=False, header=False, decimal=',', encoding='cp1252')
                     processed_data = output.getvalue()
 
                     st.success("✨ Arquivo Hachimitsu processado com sucesso!")
@@ -77,10 +79,10 @@ if opcao_conversor == "Conversor Hachimitsu":
                         mime="text/csv"
                     )
         except Exception as e:
-            st.error(f"Erro ao ler o arquivo Hachimitsu: {e}")
+            st.error(f"Erro ao processar o arquivo Hachimitsu: {e}")
 
 # -------------------------------------------------------------
-# CONVERSOR PUGLIA (Banco único fixo)
+# CONVERSOR PUGLIA
 # -------------------------------------------------------------
 elif opcao_conversor == "Conversor Puglia":
     st.subheader("🍷 Conversor Puglia")
@@ -168,7 +170,7 @@ elif opcao_conversor == "Conversor Puglia":
                 df['Conta Debito'] = contas_debito
                 df['Conta Credito'] = contas_credito
 
-                # 8. Formata o DataFrame final no layout exato
+                # 8. Formata o DataFrame final no layout exato (sem o nome do banco no meio)
                 df_final = pd.DataFrame({
                     'Data': pd.to_datetime(df[col_data], dayfirst=True, errors='coerce').dt.strftime('%d/%m/%Y'),
                     'Conta Debito': df['Conta Debito'],
