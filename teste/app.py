@@ -95,7 +95,7 @@ if opcao_conversor == "Conversor Hachimitsu":
                     # Pega todas as colunas textuais entre a data e o valor (excluindo a data, o banco e o valor) para formar o histórico completo
                     colunas_excluidas = [col_data, col_val, 'Conta Debito', 'Conta Credito']
                     if col_banco:
-                        colunas_excluidas.append(col_banco])
+                        colunas_excluidas.append(col_banco)
                     
                     colunas_historico = [c for c in df.columns if c not in col_excluidas]
 
