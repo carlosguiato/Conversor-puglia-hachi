@@ -5,7 +5,7 @@ import streamlit as st
 st.set_page_config(page_title="Conversores Contábeis", page_icon="📊", layout="centered")
 
 st.title("📊 Sistema de Conversão de Extratos para o Domínio")
-st.write("Selecione o conversor desejado na barra lateral, faça o upload do arquivo e informe as contas contábeis.")
+st.write("Selecione o conversor desejado na barra lateral, faça o upload do arquivo e configure as contas.")
 
 # Barra lateral para escolha do conversor
 st.sidebar.header("Menu de Navegação")
@@ -15,54 +15,70 @@ opcao_conversor = st.sidebar.radio(
 )
 
 # -------------------------------------------------------------
-# CONVERSOR HACHIMITSU
+# CONVERSOR HACHIMITSU (Lê os bancos dinamicamente do arquivo)
 # -------------------------------------------------------------
 if opcao_conversor == "Conversor Hachimitsu":
     st.subheader("🍱 Conversor Hachimitsu")
-    st.write("Processamento do extrato Hachimitsu com contas separadas de Clientes e Fornecedores.")
+    st.write("Envie o arquivo para identificar os bancos e configurar as contas de cada um, além das transitórias.")
     
     arquivo_hachimitsu = st.file_uploader("Envie o arquivo do Hachimitsu (Excel/CSV)", type=["xlsx", "xls", "csv"], key="hachimitsu")
     
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        conta_banco_hach = st.text_input("Conta Banco", key="banco_hach")
-    with col2:
-        conta_cli_hach = st.text_input("Transitória CLIENTES", key="cli_hach")
-    with col3:
-        conta_forn_hach = st.text_input("Transitória FORNECEDORES", key="forn_hach")
+    # Se o arquivo foi enviado, tentamos ler para achar a coluna de bancos
+    if arquivo_hachimitsu is not None:
+        try:
+            if arquivo_hachimitsu.name.endswith(('xlsx', 'xls')):
+                df_hach = pd.read_excel(arquivo_hachimitsu)
+            else:
+                df_hach = pd.read_csv(arquivo_hachimitsu, sep=None, engine='python')
+            
+            # Tenta localizar automaticamente a coluna que contém os nomes dos bancos
+            colunas_possiveis = [c for c in df_hach.columns if 'banco' in c.lower() or 'conta' in c.lower() or 'instituicao' in c.lower()]
+            
+            if colunas_possiveis:
+                col_banco_hach = colunas_possiveis[0]
+                bancos_encontrados = df_hach[col_banco_hach].dropna().unique()
+                
+                st.success(f"🔍 Identificamos a coluna de bancos: **{col_banco_hach}**")
+                st.write("Informe a conta contábil do Domínio para cada banco encontrado abaixo:")
+                
+                # Dicionário para armazenar a conta de cada banco
+                mapeamento_bancos = {}
+                for banco in bancos_encontrados:
+                    mapeamento_bancos[banco] = st.text_input(f"Conta Domínio para o banco: {banco}", key=f"banco_{banco}")
+                
+                st.markdown("---")
+            else:
+                st.warning("Não foi possível detectar automaticamente a coluna de bancos. Verifique as colunas do arquivo.")
+            
+            # Contas Transitórias gerais do Hachimitsu
+            st.write("### Contas Transitórias")
+            col1, col2 = st.columns(2)
+            with col1:
+                conta_cli_hach = st.text_input("Transitória CLIENTES", key="cli_hach")
+            with col2:
+                conta_forn_hach = st.text_input("Transitória FORNECEDORES", key="forn_hach")
 
-    if st.button("Processar Hachimitsu", key="btn_hach"):
-        if not arquivo_hachimitsu:
-            st.warning("Por favor, faça o upload de um arquivo.")
-        elif not conta_banco_hach or not conta_cli_hach or not conta_forn_hach:
-            st.warning("Por favor, preencha todas as contas contábeis (Banco, Clientes e Fornecedores).")
-        else:
-            try:
-                # Leitura do arquivo (suporta Excel ou CSV)
-                if arquivo_hachimitsu.name.endswith(('xlsx', 'xls')):
-                    df = pd.read_excel(arquivo_hachimitsu)
+            if st.button("Processar Hachimitsu", key="btn_hach"):
+                if not conta_cli_hach or not conta_forn_hach:
+                    st.warning("Por favor, preencha as contas transitórias de Clientes e Fornecedores.")
                 else:
-                    df = pd.read_csv(arquivo_hachimitsu, sep=None, engine='python')
-                
-                # Ajuste conforme a estrutura do Hachimitsu
-                # (Se o Hachimitsu tiver regras específicas de colunas/filtro, adicione aqui, mantendo a lógica de débito/crédito)
-                
-                output = io.BytesIO()
-                df.to_csv(output, sep=';', index=False, header=False, decimal=',', encoding='cp1252')
-                processed_data = output.getvalue()
+                    # Aqui entra a lógica de processamento do Hachimitsu aplicando o mapeamento dos bancos
+                    output = io.BytesIO()
+                    df_hach.to_csv(output, sep=';', index=False, header=False, decimal=',', encoding='cp1252')
+                    processed_data = output.getvalue()
 
-                st.success("✨ Arquivo Hachimitsu processado com sucesso!")
-                st.download_button(
-                    label="Baixar CSV para o Domínio (Hachimitsu)",
-                    data=processed_data,
-                    file_name="extrato_hachimitsu_dominio.csv",
-                    mime="text/csv"
-                )
-            except Exception as e:
-                st.error(f"Erro ao processar o arquivo Hachimitsu: {e}")
+                    st.success("✨ Arquivo Hachimitsu processado com sucesso!")
+                    st.download_button(
+                        label="Baixar CSV para o Domínio (Hachimitsu)",
+                        data=processed_data,
+                        file_name="extrato_hachimitsu_dominio.csv",
+                        mime="text/csv"
+                    )
+        except Exception as e:
+            st.error(f"Erro ao ler o arquivo Hachimitsu: {e}")
 
 # -------------------------------------------------------------
-# CONVERSOR PUGLIA
+# CONVERSOR PUGLIA (Mantém a regra de um único banco)
 # -------------------------------------------------------------
 elif opcao_conversor == "Conversor Puglia":
     st.subheader("🍷 Conversor Puglia")
