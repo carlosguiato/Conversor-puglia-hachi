@@ -1,5 +1,4 @@
 import io
-import numpy as np
 import pandas as pd
 import streamlit as st
 
@@ -22,38 +21,45 @@ opcao_conversor = st.sidebar.radio(
 )
 
 # -------------------------------------------------------------
-# CONVERSOR HACHIMITSU (Código Original Intacto e Corrigido)
+# CONVERSOR HACHIMITSU (Corrigido e Definitivo)
 # -------------------------------------------------------------
 if opcao_conversor == "Conversor Hachimitsu":
   st.subheader("🍱 Conversor Hachimitsu")
   st.write(
-      "Faça o upload da sua planilha de extrato bancário para gerar o arquivo"
-      " CSV formatado corretamente."
+      "Faça o upload do arquivo Excel do Hachimitsu para gerar o CSV de"
+      " importação correto."
   )
 
   uploaded_file = st.file_uploader(
-      "Selecione o arquivo Excel do extrato (.xlsx, .xls)",
+      "Selecione o arquivo Excel (.xlsx, .xls)",
       type=["xlsx", "xls"],
       key="hachimitsu",
   )
 
   if uploaded_file is not None:
     try:
-      # Leitura inicial do arquivo Excel
-      df = pd.read_excel(uploaded_file, header=0, skiprows=[1])
+      # Leitura do Excel ignorando linhas vazias iniciais
+      df = pd.read_excel(uploaded_file)
+      df = df.dropna(how="all").reset_index(drop=True)
 
       with st.expander("🔍 Ver colunas identificadas na planilha"):
         st.write(df.columns.tolist())
 
-      # Descobre quais contas bancárias existem na coluna 'Conta bancária'
+      # Descobre contas bancárias na coluna correspondente
       contas_encontradas = []
-      if "Conta bancária" in df.columns:
-        contas_encontradas = df["Conta bancária"].dropna().unique()
+      col_banco_origem = next(
+          (c for c in df.columns if "conta" in c.lower() and "banco" in c.lower()),
+          None,
+      )
+      if not col_banco_origem and "Conta bancária" in df.columns:
+        col_banco_origem = "Conta bancária"
+
+      if col_banco_origem:
+        contas_encontradas = df[col_banco_origem].dropna().unique()
 
       st.markdown("---")
       st.subheader("⚙️ Configuração das Contas no Domínio")
 
-      # Mapeamento dinâmico dos bancos encontrados
       mapeamento_contas = {}
       if len(contas_encontradas) > 0:
         for conta in contas_encontradas:
@@ -64,11 +70,10 @@ if opcao_conversor == "Conversor Hachimitsu":
           )
       else:
         st.warning(
-            "A coluna 'Conta bancária' não foi encontrada. Será usada a conta"
-            " padrão '9'."
+            "Coluna de conta bancária não identificada automaticamente."
+            " Utilizará a padrão '9'."
         )
 
-      # Configuração das contas transitórias
       col1, col2 = st.columns(2)
       with col1:
         conta_fornecedor = st.text_input(
@@ -85,41 +90,53 @@ if opcao_conversor == "Conversor Hachimitsu":
 
       st.markdown("---")
 
-      # Botão para processar
-      if st.button("🚀 Processar e Gerar CSV", type="primary", key="btn_hach"):
+      if st.button(
+          "🚀 Processar e Gerar CSV do Hachimitsu",
+          type="primary",
+          key="btn_hach",
+      ):
         if not conta_fornecedor or not conta_cliente:
           st.error(
               "Por favor, preencha as contas transitórias de Fornecedor e"
-              " Cliente antes de continuar."
+              " Cliente."
           )
         else:
-          # 2. Tratamento da coluna VALOR
-          if pd.api.types.is_numeric_dtype(df["Valor"]):
-            df["VALOR_NUM"] = df["Valor"].fillna(0)
+          # Localiza a coluna de valor
+          col_valor = next(
+              (c for c in df.columns if "valor" in c.lower()), "Valor"
+          )
+
+          # Tratamento do Valor
+          if pd.api.types.is_numeric_dtype(df[col_valor]):
+            df["VALOR_NUM"] = df[col_valor].fillna(0)
           else:
             df["VALOR_NUM"] = (
-                df["Valor"]
+                df[col_valor]
                 .astype(str)
                 .str.replace(".", "", regex=False)
                 .str.replace(",", ".", regex=False)
             )
-            df["VALOR_NUM"] = (
-                pd.to_numeric(df["VALOR_NUM"], errors="coerce").fillna(0)
-            )
+            df["VALOR_NUM"] = pd.to_numeric(
+                df["VALOR_NUM"], errors="coerce"
+            ).fillna(0)
 
-          # 3. Lógica Contábil Dinâmica
+          # Lógica Contábil
           def define_debito(row):
             valor = row["VALOR_NUM"]
             if valor < 0:
               return conta_fornecedor
             else:
-              banco_linha = row.get("Conta bancária")
+              banco_linha = (
+                  row.get(col_banco_origem) if col_banco_origem else None
+              )
               return mapeamento_contas.get(banco_linha, "9")
 
           def define_credito(row):
             valor = row["VALOR_NUM"]
             if valor < 0:
-              banco_linha = row.get("Conta bancária")
+              banco_linha = (
+                  row.get(col_banco_origem) if col_banco_origem else None
+              )
               return mapeamento_contas.get(banco_linha, "9")
             else:
               return conta_cliente
@@ -127,7 +144,7 @@ if opcao_conversor == "Conversor Hachimitsu":
           df["Conta Debito"] = df.apply(define_debito, axis=1)
           df["Conta Credito"] = df.apply(define_credito, axis=1)
 
-          # 4. Formatação do Histórico (Busca segura para evitar KeyError)
+          # Formatação Segura do Histórico (Garante que só pega colunas de texto/descrição)
           def limpar_texto(valor):
             if (
                 pd.isna(valor)
@@ -136,7 +153,7 @@ if opcao_conversor == "Conversor Hachimitsu":
               return ""
             return str(valor).strip()
 
-          col_desc_encontrada = next(
+          col_desc = next(
               (
                   c
                   for c in df.columns
@@ -144,11 +161,17 @@ if opcao_conversor == "Conversor Hachimitsu":
               ),
               None,
           )
-          col_cli_encontrada = next(
-              (c for c in df.columns if "cli" in c.lower() or "nome" in c.lower()),
+          col_cli = next(
+              (
+                  c
+                  for c in df.columns
+                  if "cli" in c.lower()
+                  or "favorecido" in c.lower()
+                  or "nome" in c.lower()
+              ),
               None,
           )
-          col_doc_encontrada = next(
+          col_doc = next(
               (
                   c
                   for c in df.columns
@@ -156,61 +179,68 @@ if opcao_conversor == "Conversor Hachimitsu":
               ),
               None,
           )
-          col_cat_encontrada = next(
-              (c for c in df.columns if "cat" in c.lower()), None
-          )
 
           partes_historico = []
-          if col_desc_encontrada:
-            partes_historico.append(df[col_desc_encontrada].apply(limpar_texto))
-          if col_cli_encontrada:
-            partes_historico.append(df[col_cli_encontrada].apply(limpar_texto))
-          if col_doc_encontrada:
-            partes_historico.append(df[col_doc_encontrada].apply(limpar_texto))
-          if col_cat_encontrada:
-            partes_historico.append(df[col_cat_encontrada].apply(limpar_texto))
+          if col_desc:
+            partes_historico.append(df[col_desc].apply(limpar_texto))
+          if col_cli:
+            partes_historico.append(df[col_cli].apply(limpar_texto))
+          if col_doc:
+            partes_historico.append(df[col_doc].apply(limpar_texto))
 
           if partes_historico:
             df["Historico"] = partes_historico[0]
             for p in partes_historico[1:]:
               df["Historico"] = df["Historico"] + " - " + p
           else:
-            df["Historico"] = ""
+            df["Historico"] = "Lancamento Hachimitsu"
 
+          # Limpeza final do texto do histórico
           df["Historico"] = (
               df["Historico"]
               .str.replace(r"\s*-\s*-\s*", " - ", regex=True)
               .str.strip(" -")
           )
 
-          # 5. Montagem do layout final
+          # Localiza a coluna de data
+          col_data = next(
+              (c for c in df.columns if "data" in c.lower()), df.columns[0]
+          )
+
+          # Montagem do DataFrame final para o Domínio
           df_final = pd.DataFrame({
-              "Data": pd.to_datetime(df["Data"], dayfirst=True).dt.strftime(
-                  "%d/%m/%Y"
-              ),
+              "Data": pd.to_datetime(
+                  df[col_data], dayfirst=True, errors="coerce"
+              ).dt.strftime("%d/%m/%Y"),
               "Conta Debito": df["Conta Debito"],
               "Conta Credito": df["Conta Credito"],
               "Valor": df["VALOR_NUM"].abs(),
               "Historico": df["Historico"],
-          })
+          }).dropna(subset=["Data"])
 
-          # 6. Geração do CSV em memória com delimitador ponto e vírgula (sep=';')
+          # Geração do CSV SEM O CABEÇALHO (header=False) e com separador correto para o Domínio
           csv_buffer = io.StringIO()
           df_final.to_csv(
-              csv_buffer, sep=";", index=False, decimal=",", encoding="cp1252"
+              csv_buffer,
+              sep=";",
+              index=False,
+              header=False,
+              decimal=",",
+              encoding="cp1252",
           )
-          csv_data = csv_buffer.getvalue()
+          csv_data = csv_buffer.getvalue().encode("cp1252", errors="replace")
 
-          st.success("✨ Arquivo convertido com sucesso!")
+          st.success(
+              f"✨ Processo concluído! {len(df_final)} lançamentos gerados com"
+              " sucesso."
+          )
 
-          # Mostra uma prévia na tela
-          with st.expander("👀 Visualizar prévia dos primeiros lançamentos"):
-            st.dataframe(df_final.head(15))
+          with st.expander("👀 Visualizar prévia dos dados gerados"):
+            st.dataframe(df_final.head(10))
 
-          # Botão de Download
           st.download_button(
               label="📥 Baixar Arquivo CSV para o Domínio",
-              data=csv_data.encode("cp1252", errors="replace"),
+              data=csv_data,
               file_name="extrato_hachimitsu_dominio.csv",
               mime="text/csv",
           )
@@ -272,40 +302,40 @@ elif opcao_conversor == "Conversor Puglia":
           ]
 
         col_data = df.columns[0]
-        col_tipo = df.columns[1]
-        col_desc = df.columns[2]
-        col_nota = df.columns[3]
-        col_nome = df.columns[4]
-        col_cd = df.columns[5]
-        col_val = df.columns[7] if len(df.columns) > 7 else df.columns[-1]
+        col_tipo = df.columns[1] if len(df.columns) > 1 else None
+        col_desc = df.columns[2] if len(df.columns) > 2 else None
+        col_nota = df.columns[3] if len(df.columns) > 3 else None
+        col_nome = df.columns[4] if len(df.columns) > 4 else None
+        col_cd = df.columns[5] if len(df.columns) > 5 else None
+        col_val = (
+            df.columns[7]
+            if len(df.columns) > 7
+            else (df.columns[6] if len(df.columns) > 6 else df.columns[-1])
+        )
 
         def criar_historico_puglia(row):
           partes = []
-          desc = (
-              str(row[col_desc]).strip() if pd.notna(row[col_desc]) else ""
-          )
-          if desc and desc.lower() != "nan":
-            partes.append(desc)
+          if col_desc and pd.notna(row[col_desc]):
+            d = str(row[col_desc]).strip()
+            if d and d.lower() != "nan":
+              partes.append(d)
 
-          nota = (
-              str(row[col_nota]).strip() if pd.notna(row[col_nota]) else ""
-          )
-          if nota and nota.lower() != "nan":
-            partes.append(f"Nota: {nota}")
+          if col_nota and pd.notna(row[col_nota]):
+            n = str(row[col_nota]).strip()
+            if n and n.lower() != "nan":
+              partes.append(f"Nota: {n}")
 
-          nome = (
-              str(row[col_nome]).strip() if pd.notna(row[col_nome]) else ""
-          )
-          if nome and nome.lower() != "nan":
-            partes.append(nome)
+          if col_nome and pd.notna(row[col_nome]):
+            nm = str(row[col_nome]).strip()
+            if nm and nm.lower() != "nan":
+              partes.append(nm)
 
-          type_val = (
-              str(row[col_tipo]).strip() if pd.notna(row[col_tipo]) else ""
-          )
-          if type_val and type_val.lower() != "nan":
-            partes.append(type_val)
+          if col_tipo and pd.notna(row[col_tipo]):
+            t = str(row[col_tipo]).strip()
+            if t and t.lower() != "nan":
+              partes.append(t)
 
-          return " - ".join(partes)
+          return " - ".join(partes) if partes else "Lancamento Puglia"
 
         df["Historico_Final"] = df.apply(criar_historico_puglia, axis=1)
 
@@ -313,7 +343,9 @@ elif opcao_conversor == "Conversor Puglia":
         contas_credito = []
 
         for _, row in df.iterrows():
-          indicador_cd = str(row[col_cd]).strip().upper()
+          indicador_cd = (
+              str(row[col_cd]).strip().upper() if col_cd else "C"
+          )
           if indicador_cd == "D":
             contas_debito.append(conta_forn_pug)
             contas_credito.append(conta_banco_pug)
@@ -334,11 +366,16 @@ elif opcao_conversor == "Conversor Puglia":
             "Historico": df["Historico_Final"],
         }).dropna(subset=["Data"])
 
-        output = io.BytesIO()
+        output = io.StringIO()
         df_final.to_csv(
-            output, sep=";", index=False, decimal=",", encoding="cp1252"
+            output,
+            sep=";",
+            index=False,
+            header=False,
+            decimal=",",
+            encoding="cp1252",
         )
-        processed_data = output.getvalue()
+        processed_data = output.getvalue().encode("cp1252", errors="replace")
 
         st.success(
             f"✨ Processo concluído! {len(df_final)} lançamentos gerados com"
