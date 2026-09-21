@@ -62,12 +62,9 @@ if opcao_conversor == "Conversor Hachimitsu":
                 if not conta_cli_hach or not conta_forn_hach:
                     st.warning("Por favor, preencha as contas transitórias de Clientes e Fornecedores.")
                 else:
-                    # Mapeia as posições com base na sua imagem anterior:
-                    # Coluna 0: Data | Coluna do Banco (se existir) | Colunas intermediárias (Histórico/Documento) | Valor
                     col_data = df.columns[0]
-                    col_val = df.columns[-1]  # Geralmente o valor está na última coluna
+                    col_val = df.columns[-1]  
 
-                    # Define as contas de Débito e Crédito para cada linha
                     contas_debito = []
                     contas_credito = []
 
@@ -75,29 +72,26 @@ if opcao_conversor == "Conversor Hachimitsu":
                         nome_banco_linha = str(row[col_banco]).strip() if col_banco and pd.notna(row[col_banco]) else ""
                         conta_banco_escolhida = mapeamento_bancos.get(nome_banco_linha, "")
                         
-                        # Verifica se o valor é negativo ou positivo para definir Débito/Crédito
                         val_num = pd.to_numeric(str(row[col_val]).replace(',', '.'), errors='coerce')
                         if pd.isna(val_num):
                             val_num = 0.0
 
                         if val_num < 0:
-                            # Saída (Pagamento): Débito é Fornecedores, Crédito é o Banco
                             contas_debito.append(conta_forn_hach)
                             contas_credito.append(conta_banco_escolhida)
                         else:
-                            # Entrada (Recebimento): Débito é o Banco, Crédito é Clientes
                             contas_debito.append(conta_banco_escolhida)
                             contas_credito.append(conta_cli_hach)
 
                     df['Conta Debito'] = contas_debito
                     df['Conta Credito'] = contas_credito
 
-                    # Pega todas as colunas textuais entre a data e o valor (excluindo a data, o banco e o valor) para formar o histórico completo
+                    # Correção aplicada aqui (usando o nome correto da lista)
                     colunas_excluidas = [col_data, col_val, 'Conta Debito', 'Conta Credito']
                     if col_banco:
                         colunas_excluidas.append(col_banco)
                     
-                    colunas_historico = [c for c in df.columns if c not in col_excluidas]
+                    colunas_historico = [c for c in df.columns if c not in colunas_excluidas]
 
                     def criar_historico(row):
                         partes = []
@@ -109,12 +103,11 @@ if opcao_conversor == "Conversor Hachimitsu":
 
                     df['Historico_Final'] = df.apply(criar_historico, axis=1)
 
-                    # DataFrame final exatamente no layout limpo exigido pelo Domínio
                     df_final = pd.DataFrame({
                         'Data': pd.to_datetime(df[col_data], dayfirst=True, errors='coerce').dt.strftime('%d/%m/%Y'),
                         'Conta Debito': df['Conta Debito'],
                         'Conta Credito': df['Conta Credito'],
-                        'Valor': pd.to_numeric(str(df[col_val]).replace(',', '.'), errors='coerce').abs() if False else pd.to_numeric(df[col_val], errors='coerce').abs(),
+                        'Valor': pd.to_numeric(df[col_val], errors='coerce').abs(),
                         'Historico': df['Historico_Final']
                     }).dropna(subset=['Data'])
 
@@ -133,7 +126,7 @@ if opcao_conversor == "Conversor Hachimitsu":
             st.error(f"Erro ao processar o arquivo Hachimitsu: {e}")
 
 # -------------------------------------------------------------
-# CONVERSOR PUGLIA (Mantido igual)
+# CONVERSOR PUGLIA
 # -------------------------------------------------------------
 elif opcao_conversor == "Conversor Puglia":
     st.subheader("🍷 Conversor Puglia")
